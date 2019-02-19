@@ -360,6 +360,25 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
             objects.push(monster);
         }
     }
+
+    let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+
+    for _ in 0..num_items {
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+        if !is_blocked(x, y, map, objects) {
+            let mut object = Object::new(
+                x,
+                y,
+                '!',
+                colors::VIOLET,
+                "healing potion",
+                false,
+            );
+            objects.push(object);
+        }
+    }
 }
 
 fn render_all(root: &mut Root, con: &mut Offscreen, objects: &[Object], map: &mut Map,
@@ -575,6 +594,22 @@ fn message<T: Into<String>>(messages: &mut Messages, message: T, color: Color) {
     messages.push((message.into(), color));
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Item {
+    Heal,
+}
+
+fn pick_item_up(object_id: usize, objects: &mut Vec<Object>, inventory: &mut Vec<Object>,
+                messages: &mut Messages) {
+    if inventory.len() >= 26 {
+        message(
+            messages,
+            format!("Your inventory is full, cannot pick up {}.", objects[object_id].name),
+            colors::RED),
+        );
+    }
+}
+
 fn main() {
     let mut root = Root::initializer()
         .font("arial10x10.png", FontLayout::Tcod)
@@ -603,6 +638,8 @@ fn main() {
     });
 
     let mut objects = vec![player];
+
+    let mut inventory = vec![];
 
     let mut map = make_map(&mut objects);
 
