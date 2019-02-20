@@ -5,5 +5,8 @@ authors = ["Daniel Hertenstein <daniel.hertenstein@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-tcod = "0.13.0"
+tcod = { version="0.13.0", features = ["serialization"] }
 rand = "0.6.5"
+serde = "1.0.88"
+serde_derive = "1.0.88"
+serde_json = "1.0.38"
