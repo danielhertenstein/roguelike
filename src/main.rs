@@ -1075,23 +1075,7 @@ fn cast_fireball(_inventory_id: usize, objects: &mut [Object], game: &mut Game,
     UseResult::UsedUp
 }
 
-fn main() {
-    let mut root = Root::initializer()
-        .font("arial10x10.png", FontLayout::Tcod)
-        .font_type(FontType::Greyscale)
-        .size(SCREEN_WIDTH, SCREEN_HEIGHT)
-        .title("Rust/libtcod tutorial")
-        .init();
-    tcod::system::set_fps(LIMIT_FPS);
-
-    let mut tcod = Tcod {
-        root,
-        con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT),
-        panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
-        fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
-        mouse: Default::default(),
-    };
-
+fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
     let mut player = Object::new(
         0,
         0,
@@ -1117,22 +1101,30 @@ fn main() {
         inventory: vec![],
     };
 
-    for y in 0..MAP_HEIGHT {
-        for x in 0..MAP_WIDTH {
-            tcod.fov.set(
-                x,
-                y,
-                !game.map[x as usize][y as usize].block_sight,
-                !game.map[x as usize][y as usize].blocked
-            );
-        }
-    }
+    initialize_fov(&game.map, tcod);
 
     game.log.add(
         "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
         colors::RED,
     );
 
+    (objects, game)
+}
+
+fn initialize_fov(map: &Map, tcod: &mut Tcod) {
+    for y in 0..MAP_HEIGHT {
+        for x in 0..MAP_WIDTH {
+            tcod.fov.set(
+                x,
+                y,
+                !map[x as usize][y as usize].block_sight,
+                !map[x as usize][y as usize].blocked
+            );
+        }
+    }
+}
+
+fn play_game(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
     let mut key = Default::default();
 
     let mut previous_player_position = (-1, -1);
@@ -1145,10 +1137,10 @@ fn main() {
         }
 
         let fov_recompute = previous_player_position != objects[PLAYER].pos();
-        render_all(&mut tcod, &objects, &mut game, fov_recompute);
+        render_all(tcod, &objects, game, fov_recompute);
         tcod.root.flush();
 
-        for object in &objects {
+        for object in objects.iter_mut() {
             object.clear(&mut tcod.con);
         }
 
@@ -1156,9 +1148,9 @@ fn main() {
 
         let player_action = handle_keys(
             key,
-            &mut tcod,
-            &mut game,
-            &mut objects,
+            tcod,
+            game,
+            objects,
         );
         if player_action == PlayerAction::Exit {
             break
@@ -1168,12 +1160,33 @@ fn main() {
                 if objects[id].ai.is_some() {
                     ai_take_turn(
                         id,
-                        &mut game,
-                        &mut objects,
+                        game,
+                        objects,
                         &tcod.fov,
                     );
                 }
             }
         }
     }
+}
+
+fn main() {
+    let mut root = Root::initializer()
+        .font("arial10x10.png", FontLayout::Tcod)
+        .font_type(FontType::Greyscale)
+        .size(SCREEN_WIDTH, SCREEN_HEIGHT)
+        .title("Rust/libtcod tutorial")
+        .init();
+    tcod::system::set_fps(LIMIT_FPS);
+
+    let mut tcod = Tcod {
+        root,
+        con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT),
+        panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
+        fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
+        mouse: Default::default(),
+    };
+
+    let (mut objects, mut game) = new_game(&mut tcod);
+    play_game(&mut objects, &mut game, &mut tcod);
 }
