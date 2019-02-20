@@ -55,6 +55,9 @@ const CONFUSE_NUM_TURNS: i32 = 10;
 const FIREBALL_RADIUS: i32 = 3;
 const FIREBALL_DAMAGE: i32 = 12;
 
+const LEVEL_UP_BASE: i32 = 200;
+const LEVEL_UP_FACTOR: i32 = 150;
+
 const PLAYER: usize = 0;
 
 type Map = Vec<Vec<Tile>>;
@@ -141,6 +144,7 @@ struct Object {
     ai: Option<Ai>,
     item: Option<Item>,
     always_visible: bool,
+    level: i32,
 }
 
 impl Object {
@@ -157,6 +161,7 @@ impl Object {
             ai: None,
             item: None,
             always_visible: false,
+            level: 1,
         }
     }
 
@@ -184,7 +189,7 @@ impl Object {
         ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
     }
 
-    pub fn take_damage(&mut self, damage: i32, game: &mut Game) {
+    pub fn take_damage(&mut self, damage: i32, game: &mut Game) -> Option<i32> {
         if let Some(fighter) = self.fighter.as_mut() {
             if damage > 0 {
                 fighter.hp -= damage;
@@ -194,8 +199,10 @@ impl Object {
             if fighter.hp <= 0 {
                 self.alive = false;
                 fighter.on_death.callback(self, game);
+                return Some(fighter.xp)
             }
         }
+        None
     }
 
     pub fn attack(&mut self, target: &mut Object, game: &mut Game) {
@@ -206,7 +213,9 @@ impl Object {
                 format!("{} attacks {} for {} hit points.", self.name, target.name, damage),
                 colors::WHITE,
             );
-            target.take_damage(damage, game);
+            if let Some(xp) = target.take_damage(damage, game) {
+                self.fighter.as_mut().unwrap().xp += xp;
+            }
         } else {
             game.log.add(
                 format!("{} attacks {} but it has no effect!", self.name, target.name),
@@ -272,6 +281,7 @@ struct Fighter {
     defense: i32,
     power: i32,
     on_death: DeathCallback,
+    xp: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -448,6 +458,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     defense: 0,
                     power: 3,
                     on_death: DeathCallback::Monster,
+                    xp: 35,
                 });
                 orc.ai = Some(Ai::Basic);
                 orc
@@ -466,6 +477,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>) {
                     defense: 1,
                     power: 4,
                     on_death: DeathCallback::Monster,
+                    xp: 100,
                 });
                 troll.ai = Some(Ai::Basic);
                 troll
@@ -993,7 +1005,9 @@ fn cast_lightning(_inventory_id: usize, objects: &mut[Object], game: &mut Game,
             The damage is {} hit points.", objects[monster_id].name, LIGHTNING_DAMAGE),
             colors::LIGHT_BLUE,
         );
-        objects[monster_id].take_damage(LIGHTNING_DAMAGE, game);
+        if let Some(xp) = objects[monster_id].take_damage(LIGHTNING_DAMAGE, game) {
+            objects[PLAYER].fighter.as_mut().unwrap().xp += xp;
+        }
         UseResult::UsedUp
     } else {
         game.log.add(
@@ -1124,7 +1138,8 @@ fn cast_fireball(_inventory_id: usize, objects: &mut [Object], game: &mut Game,
         ),
         colors::ORANGE
     );
-    for obj in objects {
+    let mut xp_to_gain = 0;
+    for (id, obj) in objects.iter_mut().enumerate() {
         if obj.distance(x, y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
             game.log.add(
                 format!(
@@ -1134,9 +1149,14 @@ fn cast_fireball(_inventory_id: usize, objects: &mut [Object], game: &mut Game,
                 ),
                 colors::ORANGE
             );
-            obj.take_damage(FIREBALL_DAMAGE, game);
+            if let Some(xp) = obj.take_damage(FIREBALL_DAMAGE, game) {
+                if id != PLAYER {
+                    xp_to_gain += xp;
+                }
+            }
         }
     }
+    objects[PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
     UseResult::UsedUp
 }
 
@@ -1155,7 +1175,8 @@ fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
         hp: 30,
         defense: 2,
         power: 5,
-        on_death: DeathCallback::Player
+        on_death: DeathCallback::Player,
+        xp: 0,
     });
 
     let mut objects = vec![player];
