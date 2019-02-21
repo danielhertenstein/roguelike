@@ -30,6 +30,9 @@ const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
 const INVENTORY_WIDTH: i32 = 50;
 
+const LEVEL_SCREEN_WIDTH: i32 = 40;
+const CHARACTER_SCREEN_WIDTH: i32 = 30;
+
 const ROOM_MAX_SIZE: i32 = 10;
 const ROOM_MIN_SIZE: i32 = 6;
 const MAX_ROOMS: i32 = 30;
@@ -235,6 +238,47 @@ impl Object {
 
     pub fn distance(&self, x: i32, y: i32) -> f32 {
         (((x - self.x).pow(2) + (y - self.y).pow(2)) as f32).sqrt()
+    }
+}
+
+fn level_up(objects: &mut [Object], game: &mut Game, tcod: &mut Tcod) {
+    let player = &mut objects[PLAYER];
+    let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+    if player.fighter.as_ref().map_or(0, |f| f.xp) >= level_up_xp {
+        player.level += 1;
+        game.log.add(
+            format!("Your battle skills grow stronger! You reached level {}!", player.level),
+            colors::YELLOW
+        );
+
+        let fighter = player.fighter.as_mut().unwrap();
+        let mut choice = None;
+        while choice.is_none() {
+            choice = menu(
+                "Level up! Choose a stat to raise:\n",
+                &[
+                    format!("Constitution (+20 HP, from {})", fighter.max_hp),
+                    format!("Strength (+1 attack, from {})", fighter.power),
+                    format!("Agility (+1 defense, from {})", fighter.defense),
+                ],
+                LEVEL_SCREEN_WIDTH,
+                &mut tcod.root,
+            );
+        };
+        fighter.xp -= level_up_xp;
+        match choice.unwrap() {
+            0 => {
+                fighter.max_hp += 20;
+                fighter.hp += 20;
+            },
+            1 => {
+                fighter.power += 1;
+            },
+            2 => {
+                fighter.defense += 1;
+            },
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -744,8 +788,7 @@ fn handle_keys(key: Key, tcod: &mut Tcod, game: &mut Game,
             }
             DidntTakeTurn
         },
-        (Key { printable: ',', .. }, true) => {
-            println!("Boo");
+        (Key { printable: 's', .. }, true) => {
             let player_on_stairs = objects.iter().any(|object| {
                 object.pos() == objects[PLAYER].pos() && object.name == "stairs"
             });
@@ -753,14 +796,35 @@ fn handle_keys(key: Key, tcod: &mut Tcod, game: &mut Game,
                 next_level(tcod, objects, game);
             }
             DidntTakeTurn
-        }
+        },
+        (Key { printable: 'c', .. }, true) => {
+            let player = &objects[PLAYER];
+            let level = player.level;
+            let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+            if let Some(fighter) = player.fighter.as_ref() {
+                let msg = format!("Character information
+
+Level: {}
+Experience: {}
+Experience to level up: {}
+
+Maximum HP: {}
+Attack: {}
+Defense: {}", level, fighter.xp, level_up_xp, fighter.max_hp, fighter.power, fighter.defense);
+                msgbox(&msg, CHARACTER_SCREEN_WIDTH, &mut tcod.root);
+            }
+            DidntTakeTurn
+        },
         (Key { code: Escape, .. }, _) => Exit,
         _ => DidntTakeTurn,
     }
 }
 
 fn next_level(tcod: &mut Tcod, objects: &mut Vec<Object>, game: &mut Game) {
-    game.log.add("You take a moment to rest, and recover your strength.", colors::VIOLET);
+    game.log.add(
+        "You take a moment to rest, and recover your strength.",
+        colors::VIOLET,
+    );
     let heal_hp = objects[PLAYER].fighter.map_or(0, |f| f.max_hp / 2);
     objects[PLAYER].heal(heal_hp);
 
@@ -819,7 +883,14 @@ fn player_death(player: &mut Object, game: &mut Game) {
 }
 
 fn monster_death(monster: &mut Object, game: &mut Game) {
-    game.log.add(format!("{} is dead!", monster.name), colors::ORANGE);
+    game.log.add(
+        format!(
+            "{} is dead! You gain {} experience points.",
+            monster.name,
+            monster.fighter.unwrap().xp,
+        ),
+        colors::ORANGE,
+    );
     monster.char = '%';
     monster.color = colors::DARK_RED;
     monster.blocks = false;
@@ -1227,6 +1298,8 @@ fn play_game(objects: &mut Vec<Object>, game: &mut Game, tcod: &mut Tcod) {
         let fov_recompute = previous_player_position != objects[PLAYER].pos();
         render_all(tcod, &objects, game, fov_recompute);
         tcod.root.flush();
+
+        level_up(objects, game, tcod);
 
         for object in objects.iter_mut() {
             object.clear(&mut tcod.con);
