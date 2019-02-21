@@ -230,7 +230,7 @@ impl Object {
 
     pub fn heal(&mut self, amount: i32, game: &Game) {
         let max_hp = self.max_hp(game);
-        if let Some(mut fighter) = self.fighter {
+        if let Some(ref mut fighter) = self.fighter {
             fighter.hp += amount;
             if fighter.hp > max_hp {
                 fighter.hp = max_hp;
@@ -795,7 +795,7 @@ fn place_objects(room: Rect, map: &Map, objects: &mut Vec<Object>, level: u32) {
                     object.item = Some(Item::Helm);
                     object.equipment = Some(Equipment {
                         equipped: false,
-                        slot: Slot::RightHand,
+                        slot: Slot::Head,
                         max_hp_bonus: 50,
                         power_bonus: 0,
                         defense_bonus: 1,
