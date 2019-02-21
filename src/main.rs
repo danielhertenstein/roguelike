@@ -382,6 +382,16 @@ enum Slot {
     Head,
 }
 
+impl std::fmt::Display for Slot {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Slot::LeftHand => write!(f, "left hand"),
+            Slot::RightHand => write!(f, "right hand"),
+            Slot::Head => write!(f, "head"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 struct Fighter {
     max_hp: i32,
@@ -1052,12 +1062,23 @@ fn pick_item_up(object_id: usize, objects: &mut Vec<Object>, game: &mut Game) {
             format!("You picked up a {}!", item.name),
             colors::GREEN,
         );
+        let index = game.inventory.len();
+        let slot = item.equipment.map(|e| e.slot);
         game.inventory.push(item);
+
+        if let Some(slot) = slot {
+            if get_equipped_in_slot(slot, &game.inventory).is_none() {
+                game.inventory[index].equip(&mut game.log);
+            }
+        }
     }
 }
 
 fn drop_item(inventory_id: usize, objects: &mut Vec<Object>, game: &mut Game) {
     let mut item = game.inventory.remove(inventory_id);
+    if item.equipment.is_some() {
+        item.dequip(&mut game.log);
+    }
     item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
     game.log.add(
         format!("You dropped a {}.", item.name),
@@ -1137,7 +1158,14 @@ fn inventory_menu(inventory: &[Object], header: &str, root: &mut Root) -> Option
     let options = if inventory.len() == 0 {
         vec!["Inventory is empty.".into()]
     } else {
-        inventory.iter().map(|item| {item.name.clone() }).collect()
+        inventory.iter().map(|item| {
+            match item.equipment {
+                Some(equipment) if equipment.equipped => {
+                    format!("{} (on {})", item.name, equipment.slot)
+                },
+                _ => item.name.clone(),
+            }
+        }).collect()
     };
 
     let inventory_index = menu(header, &options, INVENTORY_WIDTH, root);
@@ -1376,9 +1404,24 @@ fn toggle_equipment(inventory_id: usize, _objects: &mut [Object], game: &mut Gam
     if equipment.equipped {
         game.inventory[inventory_id].dequip(&mut game.log);
     } else {
+        if let Some(old_equipment) = get_equipped_in_slot(equipment.slot, &game.inventory) {
+            game.inventory[old_equipment].dequip(&mut game.log);
+        }
         game.inventory[inventory_id].equip(&mut game.log);
     }
     UseResult::UsedAndKept
+}
+
+fn get_equipped_in_slot(slot: Slot, inventory: &[Object]) -> Option<usize> {
+    for (inventory_id, item) in inventory.iter().enumerate() {
+        if item.equipment.as_ref().map_or(
+            false,
+            |e| e.equipped && e.slot == slot
+        ) {
+            return Some(inventory_id)
+        }
+    }
+    None
 }
 
 fn new_game(tcod: &mut Tcod) -> (Vec<Object>, Game) {
